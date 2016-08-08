@@ -1,0 +1,3 @@
+[submodule "external/keras"]
+	path = external/keras
+	url = https://github.com/strin/keras
