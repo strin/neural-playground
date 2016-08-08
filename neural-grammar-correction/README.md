@@ -1,3 +1,12 @@
+# Neural Grammar Correction
+[http://arxiv.org/abs/1603.09727](http://arxiv.org/abs/1603.09727) 
+
+> Neural Language Correction with Character-Based Attention
+>
+> Ziang Xie, Anand Avati, Naveen Arivazhagan, Dan Jurafsky, Andrew Y. Ng
+
+
+
 # Data License
 
 ## CoNLL-2014
