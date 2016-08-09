@@ -1,3 +1,6 @@
 [submodule "external/keras"]
 	path = external/keras
 	url = https://github.com/strin/keras
+[submodule "external/seq2seq"]
+	path = external/seq2seq
+	url = https://github.com/farizrahman4u/seq2seq

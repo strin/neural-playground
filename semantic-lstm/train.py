@@ -1,5 +1,6 @@
 # train a semantically conditioned LSTM.
 from __init__ import *
+from layer import SemConLSTM
 
 DOMAIN = 'sfxrestaurant'
 
@@ -65,11 +66,46 @@ def decode_dact(encoded, ivocab):
     return the dact dict.
     '''
     dact = {}
-    print encoded
     for x in encoded:
         pair = ivocab[x].split('.')
         dact[pair[0]] = pair[1]
     return dact
+
+
+def build(da_vocab, word_vocab, max_senlen,
+          DA_EMBED_DIM=100, WORD_EMBED_DIM=300,
+          LSTM_DIM=300):
+    '''
+    build sc-lstm model.
+    '''
+    model_da = Sequential()
+    # da embedding layer.
+    model_da.add(Embedding(len(da_vocab), output_dim=DA_EMBED_DIM))
+    # bag-of-words averaging.
+    model_da.add(Lambda(lambda emb: K.sum(emb, axis=1), output_shape=lambda input_shape: (input_shape[0], input_shape[2])))
+    model_da.add(RepeatVector(max_senlen))
+    # word embedding layer.
+    model_word = Sequential()
+    model_word.add(Embedding(len(word_vocab), input_length=max_senlen, output_dim=WORD_EMBED_DIM))
+    model_word.add(Reshape((max_senlen, WORD_EMBED_DIM)))
+    # sc-lstm layer.
+    model = Sequential()
+    model.add(Merge([model_word, model_da], mode='concat', concat_axis=2))
+    model.add(SemConLSTM(LSTM_DIM, da_dim=DA_EMBED_DIM))
+    # run test.
+    lets_test = True
+    if lets_test:
+        model_da.compile('rmsprop', 'mse') # arbitrary
+        model_word.compile('rmsprop', 'mse')
+        model.compile('rmsprop', 'mse')
+        model_da.predict(np.zeros((32, 10), dtype=np.int64))
+        model_word.predict(np.zeros((32, max_senlen), dtype=np.int64))
+        model.predict([np.zeros((32, max_senlen), dtype=np.int64),
+                       np.zeros((32, 10), dtype=np.int64)])
+
+
+
+
 
 
 if __name__ == '__main__':
@@ -77,8 +113,6 @@ if __name__ == '__main__':
     for d in data:
         d['raw_dact'] = str(d['dact'])
         d['dact'] = parse_dact(d['raw_dact'])
-    (data_encoded, vocab) = prepare_dact(data)
-    ivocab = create_idict(vocab)
-    print data_encoded[:10]
-    for i in range(10):
-        pprint(decode_dact(data_encoded[i], ivocab))
+    (data_encoded, da_vocab) = prepare_dact(data)
+    word_vocab = {i:i for i in range(100)}
+    build(da_vocab, word_vocab, max_senlen=10)
