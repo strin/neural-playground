@@ -53,4 +53,6 @@ the address for <name> is <address> .
 - [ ] zero padding to sentences and the efficiency.
 - [ ] theano compute shape information at run time.
 - [ ] difference between hidden states h and c.
-- [ ] fix words at each time step during training time.
+- [ ] fix words at each time step during training
+-  time.
+- [ ] TensorFlow faster compile time than theano.

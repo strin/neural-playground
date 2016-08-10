@@ -1,6 +1,7 @@
 # train a semantically conditioned LSTM.
 from __init__ import *
 from layer import SemConLSTM
+import dill as pickle
 
 DOMAIN = 'sfxrestaurant'
 
@@ -72,22 +73,28 @@ def decode_dact(encoded, ivocab):
     return dact
 
 
-def build(da_vocab, word_vocab, max_senlen,
-          DA_EMBED_DIM=100, WORD_EMBED_DIM=300,
-          LSTM_DIM=300):
+def build(da_vocab, word_vocab, max_senlen, word_emb=None, hidden_dim=300):
     '''
     build sc-lstm model.
     '''
     model_da = Sequential()
     # da embedding layer.
-    model_da.add(Embedding(len(da_vocab), output_dim=DA_EMBED_DIM))
+    model_da.add(Embedding(len(da_vocab), output_dim=hidden_dim))
     # bag-of-words averaging.
     model_da.add(Lambda(lambda emb: K.sum(emb, axis=1), output_shape=lambda input_shape: (input_shape[0], input_shape[2])))
     model_da.add(RepeatVector(max_senlen))
+    # word embedding layer.
+    model_word = Sequential()
+    print len(word_vocab)
+    print word_emb.shape
+    model_word.add(Embedding(len(word_vocab), input_length=max_senlen,
+                             output_dim=hidden_dim, weights=[word_emb])
+                   )
+    model_word.add(Reshape((max_senlen, hidden_dim)))
     # sc-lstm layer.
     model = Sequential()
     model.add(Merge([model_word, model_da], mode='concat', concat_axis=2))
-    model.add(SemConLSTM(LSTM_DIM, da_dim=DA_EMBED_DIM))
+    model.add(SemConLSTM(hidden_dim, da_dim=hidden_dim))
     # run test.
     lets_test = True
     if lets_test:
@@ -117,13 +124,14 @@ def build_vocab(data, output_file=None):
                 sen = sen.replace(value, '<' + token + '>')
         print>>log, sen, '\n'
         words = sen.replace('\n', '').strip().split(' ')
+        words = [word for word in words if word]
+        words.append('<eos>')
         for word in words:
-            if not word:
-                continue
             if word not in vocab:
                 vocab[word] = len(vocab)
+        d['sen'] = [vocab[word] for word in words]
     log.close()
-    if not output_file:
+    if output_file:
         with open(output_file, 'w') as f:
             for word in vocab:
                 f.write(word + '\n')
@@ -131,13 +139,39 @@ def build_vocab(data, output_file=None):
 
 
 
+def load_wordvec(vocab, wordvec_path):
+    with open(wordvec_path, 'r') as f:
+        wordvec = pickle.load(f)
+    embedding = []
+    for (i, word) in enumerate(vocab):
+        if word.startswith('<') and word.endswith('>'):
+            emb = np.zeros_like(wordvec['hi'])
+        elif word not in wordvec:
+            emb = wordvec['<unk>']
+        else:
+            emb = wordvec[word]
+        embedding.append(emb)
+    return np.array(embedding, dtype=np.float32)
+
 
 if __name__ == '__main__':
     data = read_data('data/dact/%s/train+valid+test.json' % DOMAIN)
     for d in data:
         d['raw_dact'] = str(d['dact'])
         d['dact'] = parse_dact(d['raw_dact'])
-    #(data_encoded, da_vocab) = prepare_dact(data)
+    (data_encoded, da_vocab) = prepare_dact(data)
     #word_vocab = {i:i for i in range(100)}
     #build(da_vocab, word_vocab, max_senlen=10)
-    build_vocab(data, 'vocab_sfxrestaurant.txt')
+    #build_vocab(data, 'vocab_sfxrestaurant.txt')
+    vocab = build_vocab(data)
+    max_senlen = 0
+    for d in data:
+        if len(d['sen']) > max_senlen:
+            max_senlen = len(d['sen'])
+    print 'max sentence len', max_senlen
+    for d in data:
+        d['sv'] = np.zeros(max_senlen, dtype=np.int64)
+        d['sv'][:len(d['sen'])] = d['sen']
+    word_emb = load_wordvec(vocab, 'wordvec_%s.pkl' % DOMAIN)
+    build(da_vocab, vocab, max_senlen, word_emb,
+          hidden_dim=word_emb.shape[1])
