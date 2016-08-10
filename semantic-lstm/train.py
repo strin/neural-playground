@@ -208,7 +208,10 @@ if __name__ == '__main__':
     (xs, ys, das) = create_X_Y(data)
     model = build(da_vocab, vocab, max_senlen, word_emb,
           hidden_dim=word_emb.shape[1])
-    with open('model.json', 'w') as f:
+    with open('result/model.json', 'w') as f:
         f.write(model.to_json())
-    model.save_weights('model.weights')
-    model.fit([xs, das], ys, batch_size=32, nb_epoch=10)
+    model.save_weights('result/model-init.weights')
+
+    for ei in range(10):
+        model.fit([xs, das], ys, batch_size=32, nb_epoch=1)
+        model.save_weights('result/model-%d.weights' % ei)

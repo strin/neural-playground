@@ -8,3 +8,4 @@ upload/
 *.pkl
 log/
 data/
+result/
