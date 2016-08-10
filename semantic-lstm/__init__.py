@@ -14,5 +14,6 @@ import keras
 print keras.__file__
 from keras.models import Sequential
 from keras.layers import Embedding, Merge
-from keras.layers.core import Lambda, RepeatVector, Reshape
+from keras.layers.wrappers import TimeDistributed
+from keras.layers.core import Lambda, RepeatVector, Reshape, Dense
 import keras.backend as K

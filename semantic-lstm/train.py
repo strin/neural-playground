@@ -57,6 +57,7 @@ def prepare_dact(data):
             if key not in vocab:
                 vocab[key] = len(vocab)
             d_new.append(vocab[key])
+        d['dact_int'] = d_new
         data_encoded.append(d_new)
     return (data_encoded, vocab)
 
@@ -85,8 +86,6 @@ def build(da_vocab, word_vocab, max_senlen, word_emb=None, hidden_dim=300):
     model_da.add(RepeatVector(max_senlen))
     # word embedding layer.
     model_word = Sequential()
-    print len(word_vocab)
-    print word_emb.shape
     model_word.add(Embedding(len(word_vocab), input_length=max_senlen,
                              output_dim=hidden_dim, weights=[word_emb])
                    )
@@ -94,9 +93,19 @@ def build(da_vocab, word_vocab, max_senlen, word_emb=None, hidden_dim=300):
     # sc-lstm layer.
     model = Sequential()
     model.add(Merge([model_word, model_da], mode='concat', concat_axis=2))
-    model.add(SemConLSTM(hidden_dim, da_dim=hidden_dim))
+    model.add(SemConLSTM(hidden_dim, da_dim=hidden_dim, return_sequences=True))
+    model.add(TimeDistributed(Dense(len(word_vocab), activation='softmax')))
+    # loss function.
+    def loss(y_true, y_pred):
+        print y_true
+        print y_pred
+        return K.sparse_categorical_crossentropy(y_pred[:, :max_senlen-1, :],
+                                                 y_true[:, 1:, :])
+
+    model.compile('rmsprop', 'sparse_categorical_crossentropy')
+
     # run test.
-    lets_test = True
+    lets_test = False
     if lets_test:
         model_da.compile('rmsprop', 'mse') # arbitrary
         model_word.compile('rmsprop', 'mse')
@@ -105,6 +114,7 @@ def build(da_vocab, word_vocab, max_senlen, word_emb=None, hidden_dim=300):
         model_word.predict(np.zeros((32, max_senlen), dtype=np.int64))
         model.predict([np.zeros((32, max_senlen), dtype=np.int64),
                        np.zeros((32, 10), dtype=np.int64)])
+    return model
 
 
 def build_vocab(data, output_file=None):
@@ -125,7 +135,7 @@ def build_vocab(data, output_file=None):
         print>>log, sen, '\n'
         words = sen.replace('\n', '').strip().split(' ')
         words = [word for word in words if word]
-        words.append('<eos>')
+        words = ['<bos>'] + words + ['<eos>']
         for word in words:
             if word not in vocab:
                 vocab[word] = len(vocab)
@@ -136,7 +146,6 @@ def build_vocab(data, output_file=None):
             for word in vocab:
                 f.write(word + '\n')
     return vocab
-
 
 
 def load_wordvec(vocab, wordvec_path):
@@ -154,6 +163,22 @@ def load_wordvec(vocab, wordvec_path):
     return np.array(embedding, dtype=np.float32)
 
 
+def create_X_Y(data):
+    xs = []
+    ys = []
+    das = []
+    for d in data:
+        xs.append(d['sv'])
+        ys.append(d['sv'])
+        das.append(d['dv'])
+    xs = np.array(xs, dtype=np.int64)
+    ys = np.array(ys, dtype=np.int64)
+    ys = ys.reshape(ys.shape + (1,))
+    das = np.array(das, dtype=np.int64)
+    return (xs, ys, das)
+
+
+
 if __name__ == '__main__':
     data = read_data('data/dact/%s/train+valid+test.json' % DOMAIN)
     for d in data:
@@ -165,13 +190,25 @@ if __name__ == '__main__':
     #build_vocab(data, 'vocab_sfxrestaurant.txt')
     vocab = build_vocab(data)
     max_senlen = 0
+    max_dactlen = 0
     for d in data:
         if len(d['sen']) > max_senlen:
             max_senlen = len(d['sen'])
+        if len(d['dact_int']) > max_dactlen:
+            max_dactlen = len(d['dact_int'])
+    print 'vocab size', len(vocab)
     print 'max sentence len', max_senlen
+    print 'max dialogue act len', max_dactlen
     for d in data:
         d['sv'] = np.zeros(max_senlen, dtype=np.int64)
         d['sv'][:len(d['sen'])] = d['sen']
+        d['dv'] = np.zeros(max_dactlen, dtype=np.int64)
+        d['dv'][:len(d['dact_int'])] = d['dact_int']
     word_emb = load_wordvec(vocab, 'wordvec_%s.pkl' % DOMAIN)
-    build(da_vocab, vocab, max_senlen, word_emb,
+    (xs, ys, das) = create_X_Y(data)
+    model = build(da_vocab, vocab, max_senlen, word_emb,
           hidden_dim=word_emb.shape[1])
+    with open('model.json', 'w') as f:
+        f.write(model.to_json())
+    model.save_weights('model.weights')
+    model.fit([xs, das], ys, batch_size=32, nb_epoch=10)

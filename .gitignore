@@ -5,3 +5,6 @@ tags
 *.swp
 *.sqlite
 upload/
+*.pkl
+log/
+data/
